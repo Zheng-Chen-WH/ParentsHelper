@@ -23,7 +23,7 @@
 
 - **联网搜索主通道 = 官方工具（Formula API）**：`GET /v1/formulas/moonshot/web-search:latest/tools` 拿声明 → 标准 function tool 流程 → `POST /v1/formulas/{uri}/fibers` 执行。**K2.6 思考+搜索可并用**（实测 3 轮搜索全程带 reasoning_content）。失败时回退内置 `$web_search`。
 - **没 Kimi Key 时的自给自足通道（Responses API，未经真实 Key 验证）**：千问走 `dashscope.../v1/responses`（`web_search` + `code_interpreter`），DeepSeek 走 `api.deepseek.com/v1/responses`（`web_search`）。工具全部服务端执行，无 tool_calls 循环；事件流解析 `response.output_text.delta` / `response.completed`。
-- **沙盒主通道 = 官方 code-runner**：URI 是 `moonshot/code_runner:latest`（**下划线**；web-search/fetch 才是连字符，写成 `code-runner` 会 404 被静默回退端侧——v0.33 修过一次）。工具名 `code_runner`，参数 `{code}`，结果在 `context.output`；失败回退端侧 Pyodide（回退前会把原始错误写进错误日志）。官方工具从同一账户余额按次计费（限时免费中）。
+- **沙盒：官方 code-runner 实测对普通账户不开放**（v0.34 用真实 Key 验证）：URI `moonshot/code-runner:latest`（连字符；下划线 `code_runner` 是 404 `formula not found`）。连字符能读到资源但报 403 `no permission to execute this formula`；`GET /v1/formulas` 列出的 10 个公开工具里没有 code-runner/quickjs。代码里探测到 permission/not found 后本轮会话不再试云端，直接走端侧 Pyodide（真正的主通道）。哪天账户被放开权限，代码会自动恢复云端优先。
 - **不要传 temperature/top_p**：K2.6/K2.5 推理模型只允许默认值，传了报 400 `only 1 is allowed`。
 - **`max_tokens` 必须给足**（当前 16384）：联网搜索注入结果后思考+回答常超 2000 token，太小会截断成空回答。
 - **`$web_search`（内置，回退路径）回传的 tool_call 必须保留 `"type": "builtin_function"`**：流式累积时容易丢，丢了服务端不注入搜索结果，模型会声称"没法联网"。

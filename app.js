@@ -56,7 +56,7 @@
     nightEnd: '07:00',
   };
 
-  const APP_VERSION = 'v0.33';   // 每次发版递增 0.01，用于确认真机已刷新到新版本
+  const APP_VERSION = 'v0.34';   // 每次发版递增 0.01，用于确认真机已刷新到新版本
 
   /* 旧内核没有 structuredClone，用 JSON 兜底 */
   function clone(obj) {
@@ -1720,14 +1720,19 @@
       add('联网搜索实测', false, '联网搜索开关是关的');
     }
 
-    // 6. 云端沙盒实测（Kimi 官方 code-runner，失败会回退端侧 Pyodide，这里单独验云端通道）
+    // 6. 云端沙盒实测（Kimi 官方 code-runner；目前普通账户普遍无权限，失败不影响使用，会自动用本机沙盒）
     if (cfg.enableSandbox && cfg.keys.moonshot) {
       try {
         const out = await runFormula(cfg.keys.moonshot, FORMULA.codeRunner, 'code_runner', JSON.stringify({ code: 'print(123*456)' }));
         add('云端沙盒实测（Kimi code-runner）', String(out).includes('56088'),
           String(out).slice(0, 80) || '返回为空');
       } catch (e) {
-        add('云端沙盒实测（Kimi code-runner）', false, String(e.message || e) + '（正式使用时会自动回退到本机沙盒）');
+        const msg = String(e.message || e);
+        const noPerm = /permission|not found|not open|forbidden/i.test(msg);
+        add('云端沙盒实测（Kimi code-runner）', false,
+          noPerm
+            ? '你的账户没有云端沙盒权限（code-runner 目前未对普通账户开放）。不影响使用：计算会直接用本机沙盒，首次计算需下载约 15MB 组件。'
+            : msg + '（正式使用时会自动回退到本机沙盒）');
       }
     }
 
