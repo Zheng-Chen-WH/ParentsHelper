@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a73e8">
+<title>智能助手</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== 聊天视图 ===== -->
+<div id="chatView" class="view">
+  <header class="topbar">
+    <button id="btnMenu" class="icon-btn" title="对话列表">☰</button>
+    <div class="topbar-title">智能助手</div>
+    <button id="btnClear" class="icon-btn" title="清空对话">🗑️</button>
+    <button id="btnSettings" class="icon-btn" title="设置">⚙️</button>
+  </header>
+
+  <!-- 安装引导（仅未安装且未关闭时显示） -->
+  <div id="installBanner" class="install-banner hidden">
+    <div class="banner-text">💡 点浏览器菜单（右上角⋮）→「添加到主屏幕」，以后点桌面图标就能用</div>
+    <button id="btnInstallApp">安装</button>
+    <button id="btnDismissInstall">✕</button>
+  </div>
+
+  <!-- 对话列表抽屉 -->
+  <div id="drawerMask" class="drawer-mask hidden"></div>
+  <aside id="drawer" class="drawer hidden">
+    <div class="drawer-btns">
+      <button id="btnNewChat" class="newchat-btn">＋ 新建对话</button>
+      <button id="btnFavList" class="newchat-btn fav-btn">⭐ 收藏夹</button>
+    </div>
+    <div id="convList" class="conv-list"></div>
+  </aside>
+
+  <div id="messages" class="messages"></div>
+
+  <div id="sceneChips" class="scene-chips"></div>
+
+  <div id="statusLine" class="status-line hidden"></div>
+
+  <!-- 快捷按钮建议条（自动提炼） -->
+  <div id="sceneSuggest" class="scene-suggest hidden">
+    <span class="suggest-text"></span>
+    <button id="btnSuggestYes">添加</button>
+    <button id="btnSuggestNo">不了</button>
+  </div>
+
+  <div id="pendingAttach" class="pending-attach hidden"></div>
+  <div id="pendingImage" class="pending-image hidden"></div>
+
+  <div class="send-opts">
+    <label class="orig-check">
+      <input type="checkbox" id="cfgSendOriginal"> 发原图（细密文字更清楚，流量大）
+    </label>
+  </div>
+
+  <div class="input-bar">
+    <button id="btnPhoto" class="big-btn tool-btn" title="拍照/选图（可多选）">📷</button>
+    <button id="btnFile" class="big-btn tool-btn" title="上传文件（PDF/Word/文本）">📎</button>
+    <textarea id="inputBox" rows="1" placeholder="在这里输入…"></textarea>
+    <button id="btnSend" class="big-btn send-btn">发送</button>
+  </div>
+  <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+  <input type="file" id="docInput" accept=".pdf,.docx,.xlsx,.xls,.txt,.md,.csv" class="hidden">
+</div>
+
+<!-- ===== 设置视图（单层平铺，无嵌套） ===== -->
+<div id="settingsView" class="view hidden">
+  <header class="topbar">
+    <button id="btnBack" class="icon-btn" title="返回">⬅️</button>
+    <div class="topbar-title">设置</div>
+  </header>
+  <div class="settings-body">
+
+    <section class="set-group">
+      <h2>Kimi（月之暗面）</h2>
+      <p class="hint">没有 Key？打开 <a href="https://platform.moonshot.cn/console/api-keys" target="_blank">platform.moonshot.cn</a> → 手机号登录 →「API Key 管理」→ 新建一个，复制粘贴到这里。按用量计费，先充几块钱就够用很久。</p>
+      <label>API Key
+        <input type="password" id="cfgKey_moonshot" placeholder="sk-...">
+      </label>
+      <label>聊天模型
+        <input type="text" id="cfgChat_moonshot" placeholder="kimi-k2.6">
+      </label>
+      <label>识图模型
+        <input type="text" id="cfgVis_moonshot" placeholder="默认同聊天模型">
+      </label>
+      <button class="set-btn btnFetchModels" data-provider="moonshot">获取模型列表</button>
+      <div class="model-chips" id="chips_moonshot"></div>
+      <label class="switch-row">
+        <input type="radio" name="chatProvider" id="cfgChatPick_moonshot" checked> 用 Kimi 聊天（默认）
+      </label>
+      <label class="switch-row">
+        <input type="radio" name="visionProvider" id="cfgVisPick_moonshot"> 识图用 Kimi
+      </label>
+    </section>
+
+    <section class="set-group">
+      <h2>DeepSeek（备选）</h2>
+      <p class="hint">没有 Key？打开 <a href="https://platform.deepseek.com/api_keys" target="_blank">platform.deepseek.com</a> → 登录 →「API keys」→ 创建。价格更低，但没有自己的联网搜索。</p>
+      <label>API Key
+        <input type="password" id="cfgKey_deepseek" placeholder="sk-...">
+      </label>
+      <label>聊天模型
+        <input type="text" id="cfgChat_deepseek" placeholder="deepseek-chat">
+      </label>
+      <label>识图模型
+        <input type="text" id="cfgVis_deepseek" placeholder="默认同聊天模型">
+      </label>
+      <button class="set-btn btnFetchModels" data-provider="deepseek">获取模型列表</button>
+      <div class="model-chips" id="chips_deepseek"></div>
+      <label class="switch-row">
+        <input type="radio" name="chatProvider" id="cfgChatPick_deepseek"> 用 DeepSeek 聊天
+      </label>
+      <label class="switch-row">
+        <input type="radio" name="visionProvider" id="cfgVisPick_deepseek"> 识图用 DeepSeek
+      </label>
+    </section>
+
+    <section class="set-group">
+      <h2>千问 Qwen（备选）</h2>
+      <p class="hint">没有 Key？打开 <a href="https://platform.qianwenai.com/" target="_blank">platform.qianwenai.com</a> → 登录 →「API-KEY」→ 创建。</p>
+      <label>API Key
+        <input type="password" id="cfgKey_qwen" placeholder="sk-...">
+      </label>
+      <label>聊天模型
+        <input type="text" id="cfgChat_qwen" placeholder="qwen3.8-flash">
+      </label>
+      <label>识图模型
+        <input type="text" id="cfgVis_qwen" placeholder="默认同聊天模型">
+      </label>
+      <button class="set-btn btnFetchModels" data-provider="qwen">获取模型列表</button>
+      <div class="model-chips" id="chips_qwen"></div>
+      <label class="switch-row">
+        <input type="radio" name="chatProvider" id="cfgChatPick_qwen"> 用千问聊天
+      </label>
+      <label class="switch-row">
+        <input type="radio" name="visionProvider" id="cfgVisPick_qwen"> 识图用千问
+      </label>
+    </section>
+
+
+    <section class="set-group">
+      <h2>显示</h2>
+      <label>字体大小（拖动调节）</label>
+      <div class="font-slider-row">
+        <span style="font-size:1rem">小</span>
+        <input type="range" id="cfgFontSize" min="16" max="30" step="1" value="20">
+        <span style="font-size:1.5rem">大</span>
+      </div>
+      <div id="fontPreview" class="font-preview">这是字体大小预览：您好，我是智能助手。</div>
+      <label class="switch-row" style="margin-top:12px">
+        <input type="radio" name="visionProvider" id="cfgVisPick_auto" checked> 识图跟随聊天渠道（默认）
+      </label>
+    </section>
+
+    <section class="set-group">
+      <h2>夜间模式</h2>
+      <label>模式
+        <select id="cfgNightMode">
+          <option value="auto">按时间段自动（默认）</option>
+          <option value="on">总是开启</option>
+          <option value="off">总是关闭</option>
+        </select>
+      </label>
+      <div class="btn-row" style="display:flex;gap:10px">
+        <label style="flex:1">开始
+          <input type="time" id="cfgNightStart" value="22:00">
+        </label>
+        <label style="flex:1">结束
+          <input type="time" id="cfgNightEnd" value="07:00">
+        </label>
+      </div>
+      <p class="hint">默认晚上 22:00 到早上 7:00 自动变成黑色背景。</p>
+    </section>
+
+    <section class="set-group">
+      <h2>助手人设（系统提示词）</h2>
+      <label>选择预设
+        <select id="cfgPromptSelect"></select>
+      </label>
+      <textarea id="cfgPromptText" rows="8"></textarea>
+      <div class="btn-row">
+        <button id="btnSavePrompt" class="set-btn">保存修改</button>
+        <button id="btnNewPrompt" class="set-btn">新建预设</button>
+        <button id="btnDelPrompt" class="set-btn danger">删除此预设</button>
+      </div>
+    </section>
+
+    <section class="set-group">
+      <h2>首页快捷按钮</h2>
+      <p class="hint">这些按钮显示在对话首页，爸妈点一下就会自动发送对应的话。带 📷 的会自动打开相册让爸妈拍照。</p>
+      <div id="sceneList"></div>
+      <button id="btnAddScene" class="set-btn">＋ 添加按钮</button>
+    </section>
+
+    <section class="set-group">
+      <h2>分享给家人</h2>
+      <p class="hint">点下面按钮生成二维码，把二维码图片和本 App 链接一起用微信发给家人。家人两步完成配置：<strong>① 用手机自带浏览器（不是微信）打开 App 链接；② 打开后点 ⚙️ 设置 →「从相册选二维码图片」，选微信里保存的那张</strong>，配置自动完成，不用打字。</p>
+      <button id="btnMakeQR" class="set-btn">生成配置二维码</button>
+      <div id="qrBox" class="qr-box"></div>
+      <label class="switch-row">
+        <input type="checkbox" id="cfgQrFull"> 同时分享人设预设和首页快捷按钮
+      </label>
+      <p class="hint">本机要导入配置：可以用相机扫，也可以直接选手机里保存的二维码图片（比如微信里长按保存的）：</p>
+      <button id="btnScanQR" class="set-btn">📷 扫一扫导入配置</button>
+      <button id="btnScanImage" class="set-btn">🖼️ 从相册选二维码图片</button>
+      <input type="file" id="qrImageInput" accept="image/*" class="hidden">
+    </section>
+
+    <section class="set-group">
+      <h2>连接检测</h2>
+      <p class="hint">遇到报错时点这里，逐项检测：连接、对话、识图、工具调用（联网/沙盒），会显示原始错误方便排查。</p>
+      <button id="btnDiag" class="set-btn primary">开始一键检测</button>
+      <div id="diagResult" class="diag-result"></div>
+    </section>
+
+    <section class="set-group">
+      <h2>其他</h2>
+      <button id="btnSaveCfg" class="set-btn primary">保存全部设置</button>
+      <button id="btnWipe" class="set-btn danger">清空本机所有数据</button>
+      <p class="hint" style="margin-top:14px">华为等手机清数据/桌面图标异常时配置会丢。点下面按钮把配置写进网址，再用浏览器菜单「添加到主屏幕」，以后打开图标配置自动恢复：</p>
+      <button id="btnPinCfg" class="set-btn">📌 把配置固定到网址（防丢失）</button>
+      <p class="hint" style="margin-top:14px">对话记录备份（华为等清数据的机型建议定期导出）：</p>
+      <button id="btnExportConv" class="set-btn">⬇️ 导出对话记录</button>
+      <button id="btnImportConv" class="set-btn">⬆️ 导入对话记录</button>
+      <input type="file" id="convFileInput" accept="application/json" class="hidden">
+      <p class="hint" style="margin-top:14px">遇到奇怪的问题？点下面生成一份报告发给家人/开发者：</p>
+      <button id="btnErrorReport" class="set-btn">🐞 生成错误报告</button>
+      <p class="hint">版本 <span id="verText"></span> · 数据只保存在本手机浏览器里</p>
+    </section>
+
+  </div>
+</div>
+
+<!-- 扫码浮层 -->
+<div id="scanOverlay" class="scan-overlay hidden">
+  <video id="scanVideo" playsinline muted></video>
+  <div class="scan-tip">对准家人分享的二维码</div>
+  <button id="btnScanClose" class="scan-close">✕</button>
+</div>
+
+<!-- 首次使用引导 -->
+<div id="onboardModal" class="modal-mask hidden">
+  <div class="modal-card">
+    <div id="obStepRole">
+      <h2>欢迎使用智能助手 👋</h2>
+      <p>开始前先确认一下——</p>
+      <button id="obChild" class="modal-btn">我是子女 / 家人<br><span class="modal-sub">我来配置这个 App</span></button>
+      <button id="obParent" class="modal-btn">我是父母 / 使用者<br><span class="modal-sub">家人已经帮我弄好了</span></button>
+    </div>
+    <div id="obStepKey" class="hidden">
+      <h2>你有 Kimi 的 API Key 吗？</h2>
+      <button id="obHasKey" class="modal-btn">有，去填写 ✅</button>
+      <button id="obNoKey" class="modal-btn">没有，教我怎么申请</button>
+    </div>
+    <div id="obStepGuide" class="hidden">
+      <h2>申请 Kimi API Key（约 3 分钟）</h2>
+      <p style="text-align:left">
+        1. 打开 <a href="https://platform.moonshot.cn" target="_blank">platform.moonshot.cn</a>（建议复制到浏览器）<br>
+        2. 手机号注册/登录<br>
+        3. 进入「API Key 管理」→ 新建 API Key → 复制<br>
+        4. 回到这里，点右上角 ⚙️ 设置，粘贴进去<br>
+        5. 充几块钱就够爸妈用很久（按用量计费）<br>
+        <br>
+        想更省钱还可以申请 DeepSeek 的 Key（<a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a>），在设置里切换。
+      </p>
+      <button id="obGuideDone" class="modal-btn">知道了，去设置 ⚙️</button>
+    </div>
+    <div id="obStepParent" class="hidden">
+      <h2>请家人帮你配置</h2>
+      <p style="text-align:left">
+        让家人把两样东西用微信发给你：<strong>① 这个 App 的链接　② 他在设置页生成的「配置二维码」图片</strong>。<br><br>
+        第一步：用手机自带浏览器（不是微信）打开 App 链接。<br>
+        第二步：打开后点下面的按钮，选微信里保存的那张二维码图片，配置自动完成。以后点桌面图标直接用。<br><br>
+        如果家人就在身边，也可以让他把手机给你，用相机直接扫：
+      </p>
+      <button id="obParentImg" class="modal-btn">🖼️ 从相册选二维码图片</button>
+      <button id="obParentScan" class="modal-btn">📷 相机扫一扫</button>
+      <button id="obParentSkip" class="modal-btn modal-btn-dim">先随便看看（未配置可能用不了）</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/qrcode.js"></script>
+<script src="vendor/jsQR.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/mammoth.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="providers.js"></script>
+<script src="sandbox.js"></script>
+<script src="agent.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
