@@ -64,12 +64,9 @@ async function secretarySearch(provider, key, query) {
 
 const FORMULA = {
   webSearch: 'moonshot/web-search:latest',
-  codeRunner: 'moonshot/code-runner:latest',   // 实测：连字符是真名（下划线 404）；但普通账户无执行权限（no permission to execute），探测失败后本轮不再尝试云端
+  codeRunner: 'moonshot/code-runner:latest',   // 实测：连字符是真名（下划线 404）
   fetch: 'moonshot/fetch:latest',   // 读链接工具
 };
-
-/* 云端 code-runner 是否可用：null=未探测，false=已确认不可用（无权限/不存在），之后直接走端侧 Pyodide */
-let codeRunnerOK = null;
 
 const MAX_TOOL_ROUNDS = 8;
 
@@ -127,7 +124,7 @@ async function runAgentTurn({ apiMessages, config, provider, model, onContent, o
   const lastMsg = apiMessages[apiMessages.length - 1];
   const hasImage = Array.isArray(lastMsg && lastMsg.content) && lastMsg.content.some((p) => p.type === 'image_url');
   if (!hasImage && provider === 'qwen' && config.qwenKey) {
-    // code_interpreter 直接带上：qwen3-max/qwen3.8-flash 可用；不支持的模型会 400，自动回退秘书循环
+    // code_interpreter 直接带上：qwen3-max/qwen3.8-flash 可用；不支持的模型/Key 会 400，自动回退秘书循环
     try {
       onStatus && onStatus('🔍 正在联网处理…');
       const r = await streamResponses({
@@ -262,19 +259,14 @@ async function runAgentTurn({ apiMessages, config, provider, model, onContent, o
           let r = null;
           let engine = '';
           // 云端 code-runner 优先（免下载、快），失败回退端侧 Pyodide
-          // codeRunnerOK === false 说明账户没权限/工具不存在，跳过云端少一次无谓请求
-          if (moonshotKey && codeRunnerOK !== false) {
+          if (moonshotKey) {
             try {
               onStatus && onStatus('🧮 正在用云端 Python 计算…');
               const out = await runFormula(moonshotKey, FORMULA.codeRunner, 'code_runner', JSON.stringify({ code }));
               r = { stdout: out, stderr: '', error: '', images: [] };
               engine = '云端';
-              codeRunnerOK = true;
             } catch (e) {
-              const msg = String(e.message || e);
-              logE('云端 code-runner 失败（已回退端侧 Pyodide）: ' + msg);
-              // 权限/不存在类错误不会自愈，本轮会话内不再尝试云端
-              if (/permission|not found|not open|forbidden/i.test(msg)) codeRunnerOK = false;
+              logE('云端 code-runner 失败（已回退端侧 Pyodide）: ' + (e.message || e));
             }
           }
           if (!r) {

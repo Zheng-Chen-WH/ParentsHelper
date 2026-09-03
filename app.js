@@ -56,7 +56,7 @@
     nightEnd: '07:00',
   };
 
-  const APP_VERSION = 'v0.34';   // 每次发版递增 0.01，用于确认真机已刷新到新版本
+  const APP_VERSION = 'v0.36';   // 每次发版递增 0.01，用于确认真机已刷新到新版本
 
   /* 旧内核没有 structuredClone，用 JSON 兜底 */
   function clone(obj) {
@@ -1720,8 +1720,9 @@
       add('联网搜索实测', false, '联网搜索开关是关的');
     }
 
-    // 6. 云端沙盒实测（Kimi 官方 code-runner；目前普通账户普遍无权限，失败不影响使用，会自动用本机沙盒）
+    // 6. 云端沙盒实测（按渠道分流：Kimi code-runner / 千问 code_interpreter / DeepSeek 无云端沙盒）
     if (cfg.enableSandbox && cfg.keys.moonshot) {
+      // Kimi 官方 code-runner；目前普通账户普遍无权限，失败不影响使用，会自动用本机沙盒
       try {
         const out = await runFormula(cfg.keys.moonshot, FORMULA.codeRunner, 'code_runner', JSON.stringify({ code: 'print(123*456)' }));
         add('云端沙盒实测（Kimi code-runner）', String(out).includes('56088'),
@@ -1731,9 +1732,32 @@
         const noPerm = /permission|not found|not open|forbidden/i.test(msg);
         add('云端沙盒实测（Kimi code-runner）', false,
           noPerm
-            ? '你的账户没有云端沙盒权限（code-runner 目前未对普通账户开放）。不影响使用：计算会直接用本机沙盒，首次计算需下载约 15MB 组件。'
+            ? '你的 Kimi 账户没有云端沙盒权限（code-runner 目前未对普通账户开放）。不影响使用：计算会直接用本机沙盒，首次计算需下载约 15MB 组件。'
             : msg + '（正式使用时会自动回退到本机沙盒）');
       }
+    }
+    if (cfg.enableSandbox && provider === 'qwen' && cfg.keys.qwen) {
+      // 千问 Responses 原生 code_interpreter（服务端执行，限时免费）
+      try {
+        const r = await streamResponses({
+          provider: 'qwen', key: cfg.keys.qwen, model: cfg.chatModels.qwen,
+          messages: [{ role: 'user', content: '请用代码计算 123 乘以 456，告诉我结果' }],
+          tools: [{ type: 'code_interpreter' }],
+          onContent: () => {},
+        });
+        add('云端沙盒实测（千问 code_interpreter）', !!(r.content && r.content.includes('56088')),
+          r.content ? ('回答：' + r.content.slice(0, 80)) : '返回为空');
+      } catch (e) {
+        const msg = String(e.message || e);
+        const noPerm = e.status === 400 || /InvalidParameter|permission/i.test(msg);
+        add('云端沙盒实测（千问 code_interpreter）', false,
+          noPerm
+            ? '你的千问 Key 无法使用云端沙盒（可能是该 Key 未开通「内置工具」权限，请到百炼控制台检查）。不影响使用：计算会回退本机沙盒。'
+            : msg + '（正式使用时会自动回退本机沙盒）');
+      }
+    }
+    if (cfg.enableSandbox && provider === 'deepseek' && cfg.keys.deepseek && !cfg.keys.moonshot) {
+      add('云端沙盒实测', true, 'DeepSeek 没有云端代码执行能力，沙盒本来就走本机（设计如此，不影响使用）');
     }
 
     btn.disabled = false;

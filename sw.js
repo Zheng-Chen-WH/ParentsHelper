@@ -1,5 +1,5 @@
 /* Service Worker：静态资源缓存，API 请求不拦截 */
-const CACHE = 'kj-assistant-v36';
+const CACHE = 'kj-assistant-v38';
 const CORE = [
   '.',
   'index.html',
