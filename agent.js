@@ -64,7 +64,7 @@ async function secretarySearch(provider, key, query) {
 
 const FORMULA = {
   webSearch: 'moonshot/web-search:latest',
-  codeRunner: 'moonshot/code-runner:latest',
+  codeRunner: 'moonshot/code_runner:latest',   // 注意是下划线；web-search/fetch 才是连字符，写错会 404 静默回退端侧
   fetch: 'moonshot/fetch:latest',   // 读链接工具
 };
 
@@ -265,7 +265,9 @@ async function runAgentTurn({ apiMessages, config, provider, model, onContent, o
               const out = await runFormula(moonshotKey, FORMULA.codeRunner, 'code_runner', JSON.stringify({ code }));
               r = { stdout: out, stderr: '', error: '', images: [] };
               engine = '云端';
-            } catch (_) { /* 回退到端侧 */ }
+            } catch (e) {
+              logE('云端 code-runner 失败（已回退端侧 Pyodide）: ' + (e.message || e));
+            }
           }
           if (!r) {
             onStatus && onStatus('🧮 正在用本机 Python 计算…');

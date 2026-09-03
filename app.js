@@ -56,7 +56,7 @@
     nightEnd: '07:00',
   };
 
-  const APP_VERSION = 'v0.32';   // 每次发版递增 0.01，用于确认真机已刷新到新版本
+  const APP_VERSION = 'v0.33';   // 每次发版递增 0.01，用于确认真机已刷新到新版本
 
   /* 旧内核没有 structuredClone，用 JSON 兜底 */
   function clone(obj) {
@@ -1718,6 +1718,17 @@
       add('联网搜索实测', false, 'DeepSeek 的搜索和沙盒互斥：开了沙盒就无联网（平台限制）；关掉沙盒可测');
     } else if (!cfg.enableWebSearch) {
       add('联网搜索实测', false, '联网搜索开关是关的');
+    }
+
+    // 6. 云端沙盒实测（Kimi 官方 code-runner，失败会回退端侧 Pyodide，这里单独验云端通道）
+    if (cfg.enableSandbox && cfg.keys.moonshot) {
+      try {
+        const out = await runFormula(cfg.keys.moonshot, FORMULA.codeRunner, 'code_runner', JSON.stringify({ code: 'print(123*456)' }));
+        add('云端沙盒实测（Kimi code-runner）', String(out).includes('56088'),
+          String(out).slice(0, 80) || '返回为空');
+      } catch (e) {
+        add('云端沙盒实测（Kimi code-runner）', false, String(e.message || e) + '（正式使用时会自动回退到本机沙盒）');
+      }
     }
 
     btn.disabled = false;
