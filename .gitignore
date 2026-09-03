@@ -2,5 +2,3 @@ __pycache__/
 runs/
 *.pt
 *.tfevents.*
-AGENTS.md
-小红书文案.md
