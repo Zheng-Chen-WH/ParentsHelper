@@ -1,5 +1,5 @@
 /* Service Worker：静态资源缓存，API 请求不拦截 */
-const CACHE = 'kj-assistant-v38';
+const CACHE = 'kj-assistant-v48';
 const CORE = [
   '.',
   'index.html',
@@ -8,9 +8,11 @@ const CORE = [
   'providers.js',
   'agent.js',
   'sandbox.js',
+  'jssandbox.js',
   'pyworker.js',
   'vendor/qrcode.js',
   'vendor/jsQR.js',
+  'vendor/echarts.min.js',
   'vendor/pdf.min.js',
   'vendor/pdf.worker.min.js',
   'vendor/mammoth.min.js',

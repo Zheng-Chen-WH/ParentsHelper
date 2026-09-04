@@ -40,13 +40,17 @@
 - **扫码配置**：填好 Key 生成二维码，父母微信长按识别即完成；可选同时分享人设和快捷按钮
 - **三家 API 自由切换**：Kimi（kimi-k2.6，默认）/ DeepSeek / 千问 Qwen，聊天和识图可分别指定渠道
 - **联网搜索**：Kimi 官方工具通道（思考+搜索可并用），失败自动回退；任何聊天渠道都能借道 Kimi 搜索
-- **Python 沙盒**：官方 code-runner 云端执行优先，端侧 Pyodide（numpy/pandas/matplotlib，约 15MB 组件走缓存）
+- **双引擎沙盒**：日常算账/画图走端侧 JavaScript 沙盒（内置 ECharts，毫秒级启动）；重型数据分析走端侧 Pyodide；配了 Kimi Key 时优先尝试官方 code-runner 云端执行
 - **方便维护**：代码修改后直接部署，父母下次打开时版本自动更新
 - **一键检测**：设置页跑通**连接/模型/文本/识图/工具调用/联网搜索**，失败直接显示原始错误
-- **错误报告**：一键生成，父母截图发送就能定位问题
+- **错误报告**：一键生成，父母分享就能定位问题
 - **底线提示词**：内置不可修改的真实、积极、防焦虑规则
 
 ## 快速开始
+
+### 本地预览（不用部署）
+
+双击 `启动本地测试.bat`（需要装有 Python）：自动起本地服务并打开浏览器，窗口里还会显示手机局域网测试地址。看到旧版本按 Ctrl+Shift+R 强制刷新。
 
 ### Cloudflare部署
 
@@ -81,7 +85,8 @@
 手机浏览器（PWA）
  ├── providers.js   Kimi / DeepSeek / 千问 流式 SSE 客户端
  ├── agent.js       tool_calls 循环：官方工具 web_search / code-runner
- │                  └─ 失败回退：内置 $web_search / 端侧 Pyodide 沙盒
+ │                  └─ 失败回退：内置 $web_search / 端侧沙盒
+ ├── jssandbox.js   端侧 JavaScript 沙盒（sandboxed iframe + ECharts 图表）
  ├── sandbox.js     Pyodide Web Worker（numpy/pandas/matplotlib 本地跑）
  └── app.js         对话 / 设置 / 扫码 / 检测 / 文件解析 / 夜间模式
 ```
@@ -96,6 +101,9 @@
 - **Key 安全吗？** Key 只存在你爸妈手机的浏览器里，代码开源可自查；万一泄露，去平台控制台作废重发，再扫一次码。
 - **我的xxx手机能用吗？** 在小米、鸿蒙、vivo进行了测试，为此阉割了部分 Web API （如语音输入和输出），App 内都有兜底或明确提示。IOS因为缺少测试机，所以暂时不适配，欢迎魔改。
 - **GitHub Pages / Vercel 能部署吗？** 能跑，但默认域名在国内访问不稳定，给父母用不推荐。
+
+## 后续计划
+1. 增加本地记忆库功能，收集父母在对话中提出的个人信息，改善后续对话质量（不上传至云端）
 
 ## 开源许可
 

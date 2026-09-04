@@ -13,23 +13,27 @@
 - `index.html` / `style.css` — 界面与样式（字号用 rem，根字号由设置页滑块驱动）
 - `app.js` — 主逻辑（多对话、设置、场景按钮、扫码、检测、夜间模式、引导、错误报告、文件解析）
 - `providers.js` — Kimi/DeepSeek/千问（DashScope 兼容模式）流式 SSE 客户端
-- `agent.js` — tool_calls 循环（官方工具 web_search/code-runner + 内置 $web_search 回退 + run_python）
-- `sandbox.js` / `pyworker.js` — Pyodide Web Worker 沙盒（code-runner 失败时的回退）
+- `agent.js` — tool_calls 循环（官方工具 web_search/code-runner + 内置 $web_search 回退 + run_python/run_javascript）
+- `sandbox.js` / `pyworker.js` — Pyodide Web Worker 沙盒（code-runner 失败时的回退；预载 numpy/pandas/matplotlib/micropip，站点带 `fonts/chinese.otf` 时自动装中文字体）
+- `jssandbox.js` — 端侧 JavaScript 沙盒（sandboxed iframe，无 allow-same-origin；内置 ECharts，`renderChart(option)` 出 PNG）
+- `fonts/chinese.otf` — NotoSansCJKsc 中文字体（约 16MB，Pyodide 图表中文用；删掉不影响其他功能）
 - `voice.js` — 朗读 TTS（语音识别已移除：国产浏览器普遍阉割，改造成了文件上传 📎）
 - `pyodide/` — 本地托管的 Pyodide 0.26.4 运行时（约 55MB，缺文件会加载失败）
-- `vendor/` — qrcode.js（生成）、jsQR.js（解码）、pdf.min.js+pdf.worker.min.js（PDF 解析）、mammoth.min.js（docx 解析）
+- `vendor/` — qrcode.js（生成）、jsQR.js（解码）、echarts.min.js（JS 沙盒图表）、pdf.min.js+pdf.worker.min.js（PDF 解析）、mammoth.min.js（docx 解析）
 
 ## API 踩坑记录（改动前必读，全部用真实 Key 验证过）
 
 - **联网搜索主通道 = 官方工具（Formula API）**：`GET /v1/formulas/moonshot/web-search:latest/tools` 拿声明 → 标准 function tool 流程 → `POST /v1/formulas/{uri}/fibers` 执行。**K2.6 思考+搜索可并用**（实测 3 轮搜索全程带 reasoning_content）。失败时回退内置 `$web_search`。
-- **千问 Responses 通道（v0.35 已用真实 Key 验证）**：`dashscope.../compatible-mode/v1/responses` 本身可用（reasoning 字段也支持），但 **`tools` 字段可能被网关整个拒绝**（400 `Required body invalid`，web_search/code_interpreter 同拒）——原因可能是该 Key 未开通「内置工具」权限（百炼控制台可配），也可能是请求方 IP 在海外（待内地复测确认）。运行时每条消息都会先试原生通道、失败回退秘书循环 + 端侧沙盒（v0.36 起不做会话级跳过，保证换网络环境后能自动恢复）。DeepSeek 无 code_interpreter。事件流解析 `response.output_text.delta` / `response.completed`。
-- **沙盒：官方 code-runner 实测对香港 IP 不开放**（v0.34 用真实 Key 验证，内地待复测）：URI `moonshot/code-runner:latest`（连字符；下划线 `code_runner` 是 404 `formula not found`）。连字符能读到资源但报 403 `no permission to execute this formula`；`GET /v1/formulas` 列出的 10 个公开工具里没有 code-runner/quickjs。注意同 IP 下 web-search/fetch/convert 都能用，疑似只对计算类工具做了地区/权限限制。运行时每次都先试云端、失败回退端侧 Pyodide（v0.36 起不做会话级跳过，保证内地/海外切换后自动恢复）。
+- **千问 Responses 通道（v0.41 订正：一直可用）**：之前"v0.35 实测 tools 字段被网关拒绝 400"是**测试方法错误**——Windows Git Bash 的 curl 会把单引号里的中文按 GBK 发出去，服务端解析不了才报 InvalidParameter，与 enable_thinking、Key 权限、IP 全无关。真实结论：`tools: [web_search, code_interpreter]` 正常；**code_interpreter 生成的图片以 markdown 形式嵌在 `code_interpreter_call.outputs[].logs` 文本里**（`![fig-001](http://...oss.../x.png?security-token=...)`，签名 URL 约 37 小时过期），providers.js 已扫文本内嵌 URL 提取。事件流解析 `response.output_text.delta` / `response.completed`。DeepSeek 无 code_interpreter。
+- **沙盒：Kimi 官方 code-runner/quickjs 已确认全网下线**（2026-09 官方客服回复：安全问题，加固中，恢复时间未定；与账号、IP 无关）。URI `moonshot/code-runner:latest`（连字符；下划线 `code_runner` 是 404）。403 报 `no permission to execute this formula`。运行时每次都先试云端、失败回退端侧 Pyodide（不做会话级跳过，官方恢复后自动生效）。
+- **双引擎沙盒（v0.37）**：模型可选 `run_javascript`（jssandbox.js，iframe+ECharts，画图/日常计算首选，毫秒级启动）和 `run_python`（Pyodide，重型数据分析）。Pyodide 里**不能联网**（requests/yfinance 全过不了 CORS，金价曲线就是这么挂的），工具描述和系统提示词里都写了"先 web_search 取数再硬编码进代码"——改描述时别把这条删了。
 - **不要传 temperature/top_p**：K2.6/K2.5 推理模型只允许默认值，传了报 400 `only 1 is allowed`。
 - **`max_tokens` 必须给足**（当前 16384）：联网搜索注入结果后思考+回答常超 2000 token，太小会截断成空回答。
 - **`$web_search`（内置，回退路径）回传的 tool_call 必须保留 `"type": "builtin_function"`**：流式累积时容易丢，丢了服务端不注入搜索结果，模型会声称"没法联网"。
 - `$web_search` 的 arguments 里没有 query 字段，只有 `search_result.search_id`；官方通道的 `web_search` 有明文 query。
 - assistant 回传消息 `content` 用空串 `''` 不用 `null`；思考模型的 `reasoning_content` 必须原样保留。
 - 联网搜索实测：设置页一键检测第 5 项跑完整循环（官方通道），失败时看原始错误。
+- **"DeepSeek 搜索与沙盒互斥"是旧实现的遗留说法，已删除**（v0.38）：当前架构下搜索走秘书模式独立调用（Responses web_search），沙盒走本机，两者互不干扰。另外 `enableWebSearch`/`enableSandbox` 开关在 v0.38 之前的主流程里是摆设（agent.js 不读），v0.38 起真正生效。
 - **模型可能一次发起多个并行 tool_calls**（如 `web_search:0` 和 `web_search:1`），必须每个都回 tool 消息，漏一个下轮就 400 `must be followed by tool messages`。
 
 ## 国产 ROM 适配要点（目标用户不用 Chrome）

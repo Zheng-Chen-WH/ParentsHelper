@@ -8,12 +8,31 @@ const RUN_PYTHON_TOOL = {
   function: {
     name: 'run_python',
     description:
-      '运行 Python 代码。适合做：精确计算、算账、单位换算、数据统计、画图（matplotlib）。' +
-      '代码里用 print 输出结果，运行结果会返回给你。',
+      '在本机 Python 沙盒运行代码（Pyodide）。适合做：精确计算、数据统计分析（numpy/pandas 已预装）、画静态图（matplotlib，已配好中文字体，直接 plt.plot 即可，不要 plt.show()）。' +
+      '【重要限制】沙盒不能联网：requests/yfinance/urllib 请求外部数据都会失败；需要实时数据时，先用 web_search 查到数字，再把数字直接写进代码里。' +
+      '不要尝试 pip 安装编译型包。代码里用 print 输出结果。',
     parameters: {
       type: 'object',
       properties: {
         code: { type: 'string', description: '要运行的 Python 代码' },
+      },
+      required: ['code'],
+    },
+  },
+};
+
+const RUN_JS_TOOL = {
+  type: 'function',
+  function: {
+    name: 'run_javascript',
+    description:
+      '在本机浏览器里运行 JavaScript（启动快、无需下载组件）。适合做：日常算账、日期/单位换算、文本和表格处理、画图表。' +
+      '画图用内置 ECharts：调用 renderChart(option) 即可生成图表，option 是标准 ECharts 配置（中文字体直接可用）；可以多次调用生成多张图。' +
+      '代码里用 print(...) 输出文字结果。需要 numpy/pandas 级科学计算时才用 run_python。',
+    parameters: {
+      type: 'object',
+      properties: {
+        code: { type: 'string', description: '要运行的 JavaScript 代码' },
       },
       required: ['code'],
     },
@@ -121,21 +140,32 @@ async function runAgentTurn({ apiMessages, config, provider, model, onContent, o
      - DeepSeek：秘书模式循环（web_search 工具由客户端经 DS Responses 执行 + run_python 端侧沙盒）
      注意：不要把 Kimi formula 的 encrypted_output 喂给非 Kimi 模型——它们读不懂。 */
   const logE = (m) => { try { (window.__kjLogError || console.error)(m); } catch (_) { console.error(m); } };
+  const wantSearch = config.enableWebSearch !== false;
+  const wantSandbox = config.enableSandbox !== false;
   const lastMsg = apiMessages[apiMessages.length - 1];
   const hasImage = Array.isArray(lastMsg && lastMsg.content) && lastMsg.content.some((p) => p.type === 'image_url');
-  if (!hasImage && provider === 'qwen' && config.qwenKey) {
+  if (!hasImage && provider === 'qwen' && config.qwenKey && (wantSearch || wantSandbox)) {
     // code_interpreter 直接带上：qwen3-max/qwen3.8-flash 可用；不支持的模型/Key 会 400，自动回退秘书循环
+    const qwenTools = [];
+    if (wantSearch) qwenTools.push({ type: 'web_search' });
+    if (wantSandbox) qwenTools.push({ type: 'code_interpreter' });
     try {
       onStatus && onStatus('🔍 正在联网处理…');
       const r = await streamResponses({
         provider, key, model,
         messages: apiMessages,
-        tools: [{ type: 'web_search' }, { type: 'code_interpreter' }],
+        tools: qwenTools,
         onContent, signal,
       });
       onStatus && onStatus('');
-      (r.toolEvents || []).forEach((ev) => onToolEvent && onToolEvent(ev));
-      if (r.content) return r.content;
+      (r.toolEvents || []).forEach((ev) => {
+        onToolEvent && onToolEvent(ev);
+        if (ev.images && ev.images.length && onToolImages) onToolImages(ev.images);
+      });
+      if (r.content) {
+        // 云端沙盒的 /tmp 文件我们拿不到，剥掉无效的图片引用，避免聊天里出现死链
+        return r.content.replace(/!\[[^\]]*\]\([^)]*(?:\/tmp\/|\/mnt\/|sandbox:)[^)]*\)/g, '').trim();
+      }
     } catch (e) {
       onStatus && onStatus('');
       logE('千问 Responses 通道失败（已回退秘书模式）: ' + (e.message || e));
@@ -145,7 +175,7 @@ async function runAgentTurn({ apiMessages, config, provider, model, onContent, o
   // 工具装配：Kimi 用官方工具（搜索+读链接）；其他渠道用秘书模式 web_search + read_url
   const formulaNameMap = {};   // 官方工具的 function.name → formula uri
   let searchMode = null;
-  if (moonshotKey && provider === 'moonshot') {
+  if (wantSearch && moonshotKey && provider === 'moonshot') {
     try {
       const decl = await getFormulaTools(moonshotKey, FORMULA.webSearch);
       tools.push(...decl);
@@ -160,11 +190,11 @@ async function runAgentTurn({ apiMessages, config, provider, model, onContent, o
       tools.push(...fdecl);
       fdecl.forEach((d) => { formulaNameMap[d.function.name] = FORMULA.fetch; });
     } catch (_) { /* 读链接不可用时跳过 */ }
-  } else if (provider === 'deepseek' || provider === 'qwen') {
+  } else if (wantSearch && (provider === 'deepseek' || provider === 'qwen')) {
     tools.push(WEB_SEARCH_TOOL, READ_URL_TOOL);
     searchMode = 'secretary';
   }
-  tools.push(RUN_PYTHON_TOOL);
+  if (wantSandbox) tools.push(RUN_PYTHON_TOOL, RUN_JS_TOOL);
 
   let finalText = '';
 
@@ -247,6 +277,29 @@ async function runAgentTurn({ apiMessages, config, provider, model, onContent, o
           }
         } catch (e) {
           toolResult = JSON.stringify({ error: '链接读取失败：' + e.message });
+        }
+      } else if (tc.name === 'run_javascript') {
+        let code = '';
+        try {
+          code = JSON.parse(tc.arguments).code || '';
+        } catch (_) {
+          toolResult = JSON.stringify({ error: '代码参数格式不对' });
+        }
+        if (code) {
+          onStatus && onStatus('⚡ 正在用本机 JavaScript 计算…');
+          const r = await JSSandbox.run(code);
+          if (r.images && r.images.length && onToolImages) onToolImages(r.images);
+          onToolEvent && onToolEvent({
+            kind: 'js', code,
+            stdout: r.stdout || '', error: r.error || '',
+            imageCount: (r.images || []).length,
+            engine: '本机',
+          });
+          toolResult = JSON.stringify({
+            stdout: (r.stdout || '').slice(0, 4000),
+            error: r.error || '',
+            images_note: r.images && r.images.length ? `已生成 ${r.images.length} 张图并展示给用户` : '',
+          });
         }
       } else if (tc.name === 'run_python') {
         let code = '';

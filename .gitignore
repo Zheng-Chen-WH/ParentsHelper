@@ -2,3 +2,5 @@ __pycache__/
 runs/
 *.pt
 *.tfevents.*
+启动本地测试.bat
+server_nocache.py

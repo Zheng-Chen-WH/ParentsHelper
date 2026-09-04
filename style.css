@@ -329,16 +329,25 @@ html, body {
 
 /* 快捷按钮建议条 */
 .scene-suggest {
-  display: flex; align-items: center; gap: 8px;
+  display: block;
   padding: 8px 12px; font-size: 1.05rem;
   background: var(--status-bg); color: var(--text);
   flex-shrink: 0;
 }
+.scene-suggest .suggest-head { display: flex; align-items: center; gap: 8px; }
 .scene-suggest .suggest-text { flex: 1; }
 .scene-suggest button {
   border: 2px solid var(--primary); background: var(--card); color: var(--primary-dark);
   border-radius: 8px; font-size: 1rem; padding: 6px 14px; flex-shrink: 0; font-weight: 600;
 }
+/* 建议按钮候选列表：大按钮，老人好点按 */
+.suggest-list { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.suggest-list .suggest-item {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  border: 2px solid var(--primary); background: var(--card); color: var(--primary-dark);
+  border-radius: 10px; font-size: 1.1rem; padding: 10px 14px; font-weight: 600; text-align: left;
+}
+.suggest-list .suggest-item .add-mark { margin-left: auto; color: var(--primary); font-weight: 700; }
 
 /* 快捷按钮编辑项 */
 .scene-edit {

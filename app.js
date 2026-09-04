@@ -56,7 +56,7 @@
     nightEnd: '07:00',
   };
 
-  const APP_VERSION = 'v0.36';   // 每次发版递增 0.01，用于确认真机已刷新到新版本
+  const APP_VERSION = 'v1.00';   // 每次发版递增，用于确认真机已刷新到新版本
 
   /* 旧内核没有 structuredClone，用 JSON 兜底 */
   function clone(obj) {
@@ -457,6 +457,13 @@
         if (ev.imageCount) inner += `<div class="hint">生成了 ${ev.imageCount} 张图，见下方</div>`;
         return `<details class="tool-detail"><summary>🧮 用 Python 计算（${ev.engine || '本机'}沙盒，展开看代码和结果）</summary>${inner}</details>`;
       }
+      if (ev.kind === 'js') {
+        let inner = `<pre>${escapeHtml(ev.code || '')}</pre>`;
+        if (ev.stdout) inner += `<pre>结果：${escapeHtml(ev.stdout)}</pre>`;
+        if (ev.error) inner += `<pre>出错了：${escapeHtml(ev.error)}</pre>`;
+        if (ev.imageCount) inner += `<div class="hint">生成了 ${ev.imageCount} 张图，见下方</div>`;
+        return `<details class="tool-detail"><summary>⚡ 用 JavaScript 计算（本机沙盒，展开看代码和结果）</summary>${inner}</details>`;
+      }
       return '';
     }).join('');
   }
@@ -745,7 +752,8 @@
     const today = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
     const persona = prompts[config.activePrompt]?.content || DEFAULT_PROMPTS[0].content;
     const sys = BASE_PROMPT + '\n\n' + persona + `\n\n今天是${today}。` +
-      (config.enableWebSearch ? '\n如果你使用了联网搜索，请在回答末尾用「来源：」列出你参考的网页链接。' : '');
+      (config.enableWebSearch ? '\n如果你使用了联网搜索，请在回答末尾用「来源：」列出你参考的网页链接。' : '') +
+      (config.enableSandbox ? '\n需要计算或画图时：日常算账、日期换算、画图表用 run_javascript（快）；涉及 numpy/pandas 的数据分析用 run_python。沙盒都不能联网，需要实时数据先用 web_search 查到数字再写进代码。' : '');
     const msgs = [{ role: 'system', content: sys }];
     const recent = conv.messages.slice(-20);
     // 从后往前数，最近 2 条带图的消息保留图片
@@ -932,15 +940,16 @@
       navigator.wakeLock.request('screen').then((l) => { wakeLock = l; }).catch(() => {});
     }
 
-    // 分区的气泡：思考过程 / 工具活动 / 正文
+    // 分区的气泡：思考过程 / 工具活动 / 正文 / 工具生成的图片（独立容器，避免被流式 innerHTML 刷掉）
     const bubble = document.createElement('div');
     bubble.className = 'msg assistant';
     const thinkingEl = document.createElement('details');
     thinkingEl.className = 'thinking hidden';
     const toolsEl = document.createElement('div');
     const contentEl = document.createElement('div');
+    const toolImagesEl = document.createElement('div');
     contentEl.textContent = '…';
-    bubble.append(thinkingEl, toolsEl, contentEl);
+    bubble.append(thinkingEl, toolsEl, contentEl, toolImagesEl);
     messagesEl.appendChild(bubble);
     bindLongPressCopy(bubble, () => acc);
     scrollBottom();
@@ -948,13 +957,14 @@
     let acc = '';
     let thinkingAcc = '';
     const toolEvents = [];
+    const toolImages = [];
 
     // 流式中途定期落盘：切后台/进程被杀时，半成品回复不丢
     let partialIdx = -1;
     const savePartial = () => {
       if (!acc) return;
       if (partialIdx < 0) {
-        conv.messages.push({ role: 'assistant', text: acc, thinking: thinkingAcc || undefined, tools: toolEvents.length ? [...toolEvents] : undefined });
+        conv.messages.push({ role: 'assistant', text: acc, thinking: thinkingAcc || undefined, tools: toolEvents.length ? [...toolEvents] : undefined, images: toolImages.length ? [...toolImages] : undefined });
         partialIdx = conv.messages.length - 1;
       } else if (conv.messages[partialIdx]) {
         conv.messages[partialIdx].text = acc;
@@ -993,10 +1003,11 @@
         onStatus: setStatus,
         onToolImages: (imgs) => {
           imgs.forEach((src) => {
+            toolImages.push(src);
             const img = document.createElement('img');
             img.className = 'chat-img';
             img.src = src;
-            contentEl.appendChild(img);
+            toolImagesEl.appendChild(img);
           });
           scrollBottom();
         },
@@ -1016,6 +1027,7 @@
         text: finalText,
         thinking: thinkingAcc || undefined,
         tools: toolEvents.length ? toolEvents : undefined,
+        images: toolImages.length ? [...toolImages] : undefined,
       };
       if (partialIdx >= 0 && conv.messages[partialIdx]) conv.messages[partialIdx] = finalMsg;
       else conv.messages.push(finalMsg);
@@ -1030,7 +1042,7 @@
         const stoppedText = acc ? acc + '\n\n（已停止）' : '（已停止）';
         contentEl.innerHTML = renderMarkdown(stoppedText);
         if (thinkingAcc) thinkingEl.open = false;
-        const stoppedMsg = { role: 'assistant', text: stoppedText, thinking: thinkingAcc || undefined, tools: toolEvents.length ? toolEvents : undefined };
+        const stoppedMsg = { role: 'assistant', text: stoppedText, thinking: thinkingAcc || undefined, tools: toolEvents.length ? toolEvents : undefined, images: toolImages.length ? [...toolImages] : undefined };
         if (partialIdx >= 0 && conv.messages[partialIdx]) conv.messages[partialIdx] = stoppedMsg;
         else conv.messages.push(stoppedMsg);
         conv.updatedAt = Date.now();
@@ -1108,6 +1120,19 @@
       btn.className = 'chip';
       btn.dataset.idx = i;
       btn.textContent = `${s.icon || ''} ${s.label}`.trim();
+      // 长按 0.8 秒删除（带确认，防误触）；桌面端右键同效
+      const tryDelete = () => {
+        if (confirm(`删除快捷按钮「${s.label}」？`)) {
+          scenes.splice(i, 1);
+          saveScenes(); renderChips();
+        }
+      };
+      let lpTimer = null;
+      const cancelLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+      btn.addEventListener('touchstart', () => { lpTimer = setTimeout(() => { lpTimer = null; tryDelete(); }, 800); }, { passive: true });
+      btn.addEventListener('touchend', cancelLp);
+      btn.addEventListener('touchmove', cancelLp, { passive: true });
+      btn.addEventListener('contextmenu', (e) => { e.preventDefault(); tryDelete(); });
       sceneChips.appendChild(btn);
     });
   }
@@ -1442,7 +1467,7 @@
 
   /* ========== 高频行为自动提炼按钮 ========== */
 
-  const SUGGEST_EVERY = 10;   // 每 N 条用户提问提炼一次
+  const SUGGEST_EVERY = 5;   // 每 N 条用户提问提炼一次
 
   function bumpAndMaybeSuggest() {
     const n = parseInt(localStorage.getItem('kj_msg_count') || '0', 10) + 1;
@@ -1453,7 +1478,7 @@
   }
 
   async function suggestScene() {
-    const provider = config.moonshotKey ? 'moonshot' : 'deepseek';
+    const provider = config.moonshotKey ? 'moonshot' : (config.qwenKey ? 'qwen' : 'deepseek');
     const key = config[PROVIDERS[provider].keyField];
     if (!key) return;
     const model = config.chatModels[provider] || DEFAULT_MODELS[provider];
@@ -1462,8 +1487,8 @@
     for (const c of conversations) {
       for (const m of c.messages) if (m.role === 'user' && m.text) userTexts.push(m.text);
     }
-    const recent = userTexts.slice(-20);
-    if (recent.length < 6) return;
+    const recent = userTexts.slice(-10);
+    if (recent.length < 3) return;
     const resp = await apiFetch(provider, '/chat/completions', key, {
       method: 'POST',
       body: JSON.stringify({
@@ -1471,7 +1496,7 @@
         messages: [
           {
             role: 'system',
-            content: '根据用户的历史提问记录，如果发现反复出现的主题、或适合做成一键直达的常用功能，输出一个 JSON：{"label":"按钮名（不超过6个字）","icon":"一个emoji","prompt":"点按钮后自动发送的一句话"}。' +
+            content: '根据用户的历史提问记录，找出反复出现的主题、或适合做成一键直达的常用功能，输出 1 到 3 个候选，JSON 数组格式：[{"label":"按钮名（不超过6个字）","icon":"一个emoji","prompt":"点按钮后自动发送的一句话"}]。' +
               '不要和这些已有按钮重复：' + scenes.map((s) => s.label).join('、') + '。如果没有合适的，只输出两个字：不需要',
           },
           { role: 'user', content: recent.map((t, i) => `${i + 1}. ${t}`).join('\n') },
@@ -1480,30 +1505,63 @@
     });
     const data = await resp.json();
     const text = data.choices?.[0]?.message?.content || '';
-    const m = text.match(/\{[\s\S]*\}/);
+    const m = text.match(/\[[\s\S]*\]/) || text.match(/\{[\s\S]*\}/);
     if (!m) return;
-    let obj;
-    try { obj = JSON.parse(m[0]); } catch (_) { return; }
-    if (!obj.label || !obj.prompt) return;
-    if (scenes.some((s) => s.label === obj.label)) return;
-    localStorage.setItem('kj_pending_scene', JSON.stringify(obj));
+    let arr;
+    try {
+      const parsed = JSON.parse(m[0]);
+      arr = Array.isArray(parsed) ? parsed : [parsed];
+    } catch (_) { return; }
+    // 过滤：缺字段、与现有按钮严格重名、候选之间互相重名
+    const seen = new Set(scenes.map((s) => s.label));
+    const list = [];
+    for (const o of arr) {
+      if (!o || !o.label || !o.prompt) continue;
+      if (seen.has(o.label)) continue;
+      seen.add(o.label);
+      list.push({ label: o.label, icon: o.icon || '💡', prompt: o.prompt });
+      if (list.length >= 3) break;
+    }
+    if (!list.length) return;
+    localStorage.setItem('kj_pending_scene', JSON.stringify(list));
   }
 
   function showPendingSuggestion() {
     const raw = localStorage.getItem('kj_pending_scene');
     if (!raw) return;
-    let obj;
-    try { obj = JSON.parse(raw); } catch (_) { localStorage.removeItem('kj_pending_scene'); return; }
-    if (!obj.label || !obj.prompt) { localStorage.removeItem('kj_pending_scene'); return; }
+    let list;
+    try {
+      const parsed = JSON.parse(raw);
+      // 兼容旧版单个对象的格式
+      list = Array.isArray(parsed) ? parsed : [parsed];
+      list = list.filter((o) => o && o.label && o.prompt);
+    } catch (_) { localStorage.removeItem('kj_pending_scene'); return; }
+    if (!list.length) { localStorage.removeItem('kj_pending_scene'); return; }
     const box = $('sceneSuggest');
-    box.querySelector('.suggest-text').textContent = `💡 要不要加一个「${(obj.icon || '') + ' ' + obj.label}」的快捷按钮？`;
-    box.classList.remove('hidden');
-    $('btnSuggestYes').onclick = () => {
-      scenes.push({ icon: obj.icon || '💡', label: obj.label, prompt: obj.prompt, needsImage: false });
-      saveScenes(); renderChips();
-      localStorage.removeItem('kj_pending_scene');
-      box.classList.add('hidden');
+    const listEl = $('suggestList');
+    const render = () => {
+      listEl.innerHTML = '';
+      list.forEach((o, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'suggest-item';
+        btn.innerHTML = `<span>${escapeHtml((o.icon || '💡') + ' ' + o.label)}</span><span class="add-mark">＋ 加上</span>`;
+        btn.onclick = () => {
+          scenes.push({ icon: o.icon || '💡', label: o.label, prompt: o.prompt, needsImage: false });
+          saveScenes(); renderChips();
+          list.splice(i, 1);
+          if (list.length) {
+            localStorage.setItem('kj_pending_scene', JSON.stringify(list));
+            render();
+          } else {
+            localStorage.removeItem('kj_pending_scene');
+            box.classList.add('hidden');
+          }
+        };
+        listEl.appendChild(btn);
+      });
     };
+    render();
+    box.classList.remove('hidden');
     $('btnSuggestNo').onclick = () => {
       localStorage.removeItem('kj_pending_scene');
       box.classList.add('hidden');
@@ -1701,7 +1759,7 @@
       } catch (e) {
         add('联网搜索实测（千问 Responses）', false, String(e.message || e));
       }
-    } else if (cfg.enableWebSearch && provider === 'deepseek' && cfg.keys.deepseek && !cfg.enableSandbox) {
+    } else if (cfg.enableWebSearch && provider === 'deepseek' && cfg.keys.deepseek) {
       try {
         const r = await streamResponses({
           provider: 'deepseek', key: cfg.keys.deepseek, model: cfg.chatModels.deepseek,
@@ -1714,50 +1772,51 @@
       } catch (e) {
         add('联网搜索实测（DeepSeek Responses）', false, String(e.message || e));
       }
-    } else if (cfg.enableWebSearch && provider === 'deepseek' && cfg.enableSandbox) {
-      add('联网搜索实测', false, 'DeepSeek 的搜索和沙盒互斥：开了沙盒就无联网（平台限制）；关掉沙盒可测');
     } else if (!cfg.enableWebSearch) {
       add('联网搜索实测', false, '联网搜索开关是关的');
     }
 
-    // 6. 云端沙盒实测（按渠道分流：Kimi code-runner / 千问 code_interpreter / DeepSeek 无云端沙盒）
-    if (cfg.enableSandbox && cfg.keys.moonshot) {
-      // Kimi 官方 code-runner；目前普通账户普遍无权限，失败不影响使用，会自动用本机沙盒
-      try {
-        const out = await runFormula(cfg.keys.moonshot, FORMULA.codeRunner, 'code_runner', JSON.stringify({ code: 'print(123*456)' }));
-        add('云端沙盒实测（Kimi code-runner）', String(out).includes('56088'),
-          String(out).slice(0, 80) || '返回为空');
-      } catch (e) {
-        const msg = String(e.message || e);
-        const noPerm = /permission|not found|not open|forbidden/i.test(msg);
-        add('云端沙盒实测（Kimi code-runner）', false,
-          noPerm
-            ? '你的 Kimi 账户没有云端沙盒权限（code-runner 目前未对普通账户开放）。不影响使用：计算会直接用本机沙盒，首次计算需下载约 15MB 组件。'
-            : msg + '（正式使用时会自动回退到本机沙盒）');
+    // 6. 云端沙盒实测（跟随当前聊天渠道，只占一个槽位）
+    if (cfg.enableSandbox) {
+      if (provider === 'moonshot' && cfg.keys.moonshot) {
+        // Kimi 官方 code-runner：官方客服已确认因安全问题暂时下线（2026-09），恢复时间未定
+        try {
+          const out = await runFormula(cfg.keys.moonshot, FORMULA.codeRunner, 'code_runner', JSON.stringify({ code: 'print(123*456)' }));
+          add('云端沙盒实测（Kimi code-runner）', String(out).includes('56088'),
+            String(out).slice(0, 80) || '返回为空');
+        } catch (e) {
+          const msg = String(e.message || e);
+          const noPerm = /permission|not found|not open|forbidden/i.test(msg);
+          add('云端沙盒实测（Kimi code-runner）', false,
+            noPerm
+              ? 'Kimi 官方 code-runner 因安全问题暂时下线（官方已确认，恢复时间未定）。不影响使用：计算直接用本机沙盒。'
+              : msg + '（正式使用时会自动回退到本机沙盒）');
+        }
+      } else if (provider === 'qwen' && cfg.keys.qwen) {
+        // 千问 Responses 原生 code_interpreter（服务端执行，限时免费）
+        try {
+          const r = await streamResponses({
+            provider: 'qwen', key: cfg.keys.qwen, model: cfg.chatModels.qwen,
+            messages: [{ role: 'user', content: '请用代码计算 123 乘以 456，告诉我结果' }],
+            tools: [{ type: 'code_interpreter' }],
+            onContent: () => {},
+          });
+          const usedCI = (r.toolEvents || []).some((ev) => ev.kind === 'python');
+          add('云端沙盒实测（千问 code_interpreter）', usedCI,
+            usedCI
+              ? '已通过云端代码执行得出结果' + (r.content ? '：' + r.content.slice(0, 60) : '')
+              : '模型没有调用云端沙盒，直接口算了（' + (r.content || '返回为空').slice(0, 50) + '）');
+        } catch (e) {
+          const msg = String(e.message || e);
+          const noPerm = e.status === 400 || /InvalidParameter|permission/i.test(msg);
+          add('云端沙盒实测（千问 code_interpreter）', false,
+            noPerm
+              ? '你的千问 Key 无法使用云端沙盒（可能是该 Key 未开通「内置工具」权限，请到百炼控制台检查）。不影响使用：计算会回退本机沙盒。'
+              : msg + '（正式使用时会自动回退本机沙盒）');
+        }
+      } else if (provider === 'deepseek' && cfg.keys.deepseek) {
+        add('云端沙盒实测', true, 'DeepSeek 没有云端沙盒，计算走本机（设计如此，不影响使用）');
       }
-    }
-    if (cfg.enableSandbox && provider === 'qwen' && cfg.keys.qwen) {
-      // 千问 Responses 原生 code_interpreter（服务端执行，限时免费）
-      try {
-        const r = await streamResponses({
-          provider: 'qwen', key: cfg.keys.qwen, model: cfg.chatModels.qwen,
-          messages: [{ role: 'user', content: '请用代码计算 123 乘以 456，告诉我结果' }],
-          tools: [{ type: 'code_interpreter' }],
-          onContent: () => {},
-        });
-        add('云端沙盒实测（千问 code_interpreter）', !!(r.content && r.content.includes('56088')),
-          r.content ? ('回答：' + r.content.slice(0, 80)) : '返回为空');
-      } catch (e) {
-        const msg = String(e.message || e);
-        const noPerm = e.status === 400 || /InvalidParameter|permission/i.test(msg);
-        add('云端沙盒实测（千问 code_interpreter）', false,
-          noPerm
-            ? '你的千问 Key 无法使用云端沙盒（可能是该 Key 未开通「内置工具」权限，请到百炼控制台检查）。不影响使用：计算会回退本机沙盒。'
-            : msg + '（正式使用时会自动回退本机沙盒）');
-      }
-    }
-    if (cfg.enableSandbox && provider === 'deepseek' && cfg.keys.deepseek && !cfg.keys.moonshot) {
-      add('云端沙盒实测', true, 'DeepSeek 没有云端代码执行能力，沙盒本来就走本机（设计如此，不影响使用）');
     }
 
     btn.disabled = false;

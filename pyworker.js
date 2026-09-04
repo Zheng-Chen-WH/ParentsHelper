@@ -19,7 +19,7 @@ async function init() {
     pyodide.setStderr({ batched: (s) => { stderrBuf += s + '\n'; } });
 
     report('正在准备科学计算包…');
-    await pyodide.loadPackage(['numpy', 'pandas', 'matplotlib']);
+    await pyodide.loadPackage(['numpy', 'pandas', 'matplotlib', 'micropip']);
 
     // 内置中文字体（如果站点带了 fonts/chinese.otf），没有也不影响使用
     try {

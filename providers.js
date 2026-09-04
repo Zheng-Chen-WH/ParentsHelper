@@ -244,7 +244,26 @@ async function streamResponses({ provider, key, model, messages, tools, onConten
     if (item.type === 'web_search_call') {
       toolEvents.push({ kind: 'search', query: item.action?.query || '' });
     } else if (item.type === 'code_interpreter_call') {
-      toolEvents.push({ kind: 'python', code: item.code || '', stdout: '', error: '', imageCount: 0, engine: '云端' });
+      // 防御式收集图片：实测百炼 code_interpreter 把图片以 markdown 形式放在 outputs[].logs 文本里
+      // （![fig-001](http://...oss.../xxx.png?security-token=...)），所以要扫文本内嵌 URL，不只是独立字段
+      const imgs = [];
+      const scan = (v, k) => {
+        if (v == null) return;
+        if (typeof v === 'string') {
+          if (/^data:image\//.test(v)) { imgs.push(v); return; }
+          const m = v.match(/https?:\/\/[^\s)"']+?\.(?:png|jpe?g|gif|webp)(?:\?[^\s)"']*)?/gi);
+          if (m) { imgs.push(...m); return; }
+          if (/^https?:\/\/\S+$/.test(v)) imgs.push(v);
+          else if (k && /b64|base64/i.test(k) && v.length > 500) imgs.push('data:image/png;base64,' + v);
+          return;
+        }
+        if (Array.isArray(v)) return v.forEach((x) => scan(x, k));
+        if (typeof v === 'object') Object.entries(v).forEach(([kk, vv]) => scan(vv, kk));
+      };
+      scan(item);
+      // OSS 签名 URL 是 http://，页面若是 https（pages.dev）会被浏览器按混合内容拦截，统一升级
+      const uniq = [...new Set(imgs)].map((u) => u.replace(/^http:\/\//, 'https://'));
+      toolEvents.push({ kind: 'python', code: item.code || '', stdout: '', error: '', imageCount: uniq.length, engine: '云端', images: uniq.length ? uniq : undefined });
     }
   }
 

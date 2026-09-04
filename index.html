@@ -44,11 +44,13 @@
 
   <div id="statusLine" class="status-line hidden"></div>
 
-  <!-- 快捷按钮建议条（自动提炼） -->
+  <!-- 快捷按钮建议条（自动提炼，可一次加多个） -->
   <div id="sceneSuggest" class="scene-suggest hidden">
-    <span class="suggest-text"></span>
-    <button id="btnSuggestYes">添加</button>
-    <button id="btnSuggestNo">不了</button>
+    <div class="suggest-head">
+      <span class="suggest-text">💡 发现你常问这类问题，点一下就能加上快捷按钮：</span>
+      <button id="btnSuggestNo">不了</button>
+    </div>
+    <div id="suggestList" class="suggest-list"></div>
   </div>
 
   <div id="pendingAttach" class="pending-attach hidden"></div>
@@ -56,14 +58,14 @@
 
   <div class="send-opts">
     <label class="orig-check">
-      <input type="checkbox" id="cfgSendOriginal"> 发原图（细密文字更清楚，流量大）
+      <input type="checkbox" id="cfgSendOriginal"> 发原图（细密文字更清楚，方便模型看清）
     </label>
   </div>
 
   <div class="input-bar">
     <button id="btnPhoto" class="big-btn tool-btn" title="拍照/选图（可多选）">📷</button>
     <button id="btnFile" class="big-btn tool-btn" title="上传文件（PDF/Word/文本）">📎</button>
-    <textarea id="inputBox" rows="1" placeholder="在这里输入…"></textarea>
+    <textarea id="inputBox" rows="1" placeholder="在这里输入，可以使用语音输入法…"></textarea>
     <button id="btnSend" class="big-btn send-btn">发送</button>
   </div>
   <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
@@ -102,7 +104,7 @@
 
     <section class="set-group">
       <h2>DeepSeek（备选）</h2>
-      <p class="hint">没有 Key？打开 <a href="https://platform.deepseek.com/api_keys" target="_blank">platform.deepseek.com</a> → 登录 →「API keys」→ 创建。价格更低，但没有自己的联网搜索。</p>
+      <p class="hint">没有 Key？打开 <a href="https://platform.deepseek.com/api_keys" target="_blank">platform.deepseek.com</a> → 登录 →「API keys」→ 创建。价格更低，也支持联网搜索和本机沙盒。</p>
       <label>API Key
         <input type="password" id="cfgKey_deepseek" placeholder="sk-...">
       </label>
@@ -224,9 +226,9 @@
       <h2>其他</h2>
       <button id="btnSaveCfg" class="set-btn primary">保存全部设置</button>
       <button id="btnWipe" class="set-btn danger">清空本机所有数据</button>
-      <p class="hint" style="margin-top:14px">华为等手机清数据/桌面图标异常时配置会丢。点下面按钮把配置写进网址，再用浏览器菜单「添加到主屏幕」，以后打开图标配置自动恢复：</p>
+      <p class="hint" style="margin-top:14px">如果浏览器清数据或桌面图标异常导致配置丢失，可以点下面按钮把配置写进网址，再用浏览器菜单「添加到主屏幕」，以后打开图标配置自动恢复：</p>
       <button id="btnPinCfg" class="set-btn">📌 把配置固定到网址（防丢失）</button>
-      <p class="hint" style="margin-top:14px">对话记录备份（华为等清数据的机型建议定期导出）：</p>
+      <p class="hint" style="margin-top:14px">对话记录备份（建议定期导出，防止浏览器清数据后丢失）：</p>
       <button id="btnExportConv" class="set-btn">⬇️ 导出对话记录</button>
       <button id="btnImportConv" class="set-btn">⬆️ 导入对话记录</button>
       <input type="file" id="convFileInput" accept="application/json" class="hidden">
@@ -294,6 +296,7 @@
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="providers.js"></script>
 <script src="sandbox.js"></script>
+<script src="jssandbox.js"></script>
 <script src="agent.js"></script>
 <script src="app.js"></script>
 </body>
