@@ -1120,7 +1120,8 @@
       btn.className = 'chip';
       btn.dataset.idx = i;
       btn.textContent = `${s.icon || ''} ${s.label}`.trim();
-      // 长按 0.8 秒删除（带确认，防误触）；桌面端右键同效
+      // 长按 0.8 秒删除（带确认，防误触）；单一入口走 touch 计时器，
+      // contextmenu 只压住浏览器原生长按菜单——桌面端删除请用设置页的快捷按钮编辑器
       const tryDelete = () => {
         if (confirm(`删除快捷按钮「${s.label}」？`)) {
           scenes.splice(i, 1);
@@ -1128,19 +1129,13 @@
         }
       };
       let lpTimer = null;
-      let lpFired = false;   // 长按触发后置位：随后浏览器补发的 contextmenu 要吞掉，否则删两个
       const cancelLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
       btn.addEventListener('touchstart', () => {
-        lpFired = false;
-        lpTimer = setTimeout(() => { lpTimer = null; lpFired = true; tryDelete(); }, 800);
+        lpTimer = setTimeout(() => { lpTimer = null; tryDelete(); }, 800);
       }, { passive: true });
       btn.addEventListener('touchend', cancelLp);
       btn.addEventListener('touchmove', cancelLp, { passive: true });
-      btn.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        if (lpFired) { lpFired = false; return; }   // 这次 contextmenu 是触摸长按补发的，跳过
-        tryDelete();
-      });
+      btn.addEventListener('contextmenu', (e) => { e.preventDefault(); });
       sceneChips.appendChild(btn);
     });
   }
