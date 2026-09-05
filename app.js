@@ -1128,11 +1128,19 @@
         }
       };
       let lpTimer = null;
+      let lpFired = false;   // 长按触发后置位：随后浏览器补发的 contextmenu 要吞掉，否则删两个
       const cancelLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
-      btn.addEventListener('touchstart', () => { lpTimer = setTimeout(() => { lpTimer = null; tryDelete(); }, 800); }, { passive: true });
+      btn.addEventListener('touchstart', () => {
+        lpFired = false;
+        lpTimer = setTimeout(() => { lpTimer = null; lpFired = true; tryDelete(); }, 800);
+      }, { passive: true });
       btn.addEventListener('touchend', cancelLp);
       btn.addEventListener('touchmove', cancelLp, { passive: true });
-      btn.addEventListener('contextmenu', (e) => { e.preventDefault(); tryDelete(); });
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        if (lpFired) { lpFired = false; return; }   // 这次 contextmenu 是触摸长按补发的，跳过
+        tryDelete();
+      });
       sceneChips.appendChild(btn);
     });
   }
