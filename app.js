@@ -1750,7 +1750,7 @@
       try {
         const r = await streamResponses({
           provider: 'qwen', key: cfg.keys.qwen, model: cfg.chatModels.qwen,
-          messages: [{ role: 'user', content: '请联网搜索：今天有什么新闻？' }],
+          messages: [{ role: 'user', content: '请联网搜索：胶东芸豆花蛤打卤面的做法' }],
           tools: [{ type: 'web_search' }],
           onContent: () => {},
         });
@@ -1763,7 +1763,7 @@
       try {
         const r = await streamResponses({
           provider: 'deepseek', key: cfg.keys.deepseek, model: cfg.chatModels.deepseek,
-          messages: [{ role: 'user', content: '请联网搜索：今天有什么新闻？' }],
+          messages: [{ role: 'user', content: '请联网搜索：胶东芸豆花蛤打卤面的做法' }],
           tools: [{ type: 'web_search' }],
           onContent: () => {},
         });
